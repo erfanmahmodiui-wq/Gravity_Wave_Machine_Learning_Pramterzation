@@ -1,0 +1,33 @@
+# ── Resolved-flow / preprocessing ──────────────────────────────────────
+resolved_flow_dir:        "/work/bb1097/b383521/resolved_var/"
+grid_file_low:             "/work/bb1097/b381585/data/icon_grid_0012_R02B04_G.nc"
+grid_file_v2:               "/work/bb1097/b381585/data/icon_grid_0012_R02B04_G-v2.nc"
+plots_dir:                 "/work/bb1097/b383521/plots/"
+
+# ── Coarse-grained gravity-wave action spectra ─────────────────────────
+coarse_action_dir:         "/work/bb1097/b383521/GW_Data_Summer/coarsed_action/"   # August/summer group
+coarse_action_dir_jan:      "/work/bb1097/b383521/GW_Data/coarsed_action/"          # January/winter group
+
+# ── ML-ready datasets (land/ocean, jan/aug) ────────────────────────────
+data_base_dir_jan:          "/work/bb1097/b383521/GW_Data/Data_set_ML/"
+data_base_dir_aug:          "/work/bb1097/b383521/GW_Data_Summer/Data_set_ML/"
+
+# ── Model training / saving ────────────────────────────────────────────
+save_dir:                   "/work/bb1097/b383521/ML_models/coarsed_grained/"
+ml_model_dir:                "/work/bb1097/b383521/ML_models/coarsed_grained/models/"
+
+# ── SHAP / XAI ──────────────────────────────────────────────────────────
+shap_dir:                   "/work/bb1097/b383521/ML_models/coarsed_grained/shap/"
+shap_plots_dir:              "/work/bb1097/b383521/plots/shap/"
+
+# ── Flux/energy physical validation ────────────────────────────────────
+decomposed_dir:              "/work/bb1097/b381585/data/decomposed-correction/"
+tri_list_dir:                 "/work/bb1097/b381585/data/averaged/"
+flux_energy_metrics_dir:      "/work/bb1097/b383521/flux_energy_metrics/"
+
+# ── PCA reconstruction pipeline ─────────────────────────────────────────
+pca_data_base_dir:           "/work/bb1097/b383521/Data_Base/"
+real_action_dir:              "/work/bb1097/b383521/dummy/interp_wave_action_density/"
+avg_dir:                      "/work/bb1097/b383521/dummy/avg_full_new/"
+eof_dir:                      "/work/bb1097/b383521/dummy/EOF_new/"
+pca_recon_dir:                "/work/bb1097/b383521/PCA_recon/"
