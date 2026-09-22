@@ -2,9 +2,11 @@ import numpy as np
 import xarray as xr
 import joblib
 import tensorflow as tf
-
-from src.models.model import read_scale_data
-from src.evaluation.flux_energy import physical_values
+import sys
+import os
+sys.path.append(os.path.abspath(".."))
+from model.model import read_scale_data
+from evaluation.flux_energy import physical_values
 from src.config import load_paths
 
 
@@ -201,11 +203,14 @@ if __name__ == "__main__":
     results = {}
     regims = {}
 
-    for tag in ["land"]:
-        fname_model = f"cnn_loss_coarsed_{tag}.keras"
+    for tag in ["land", "ocean"]:
+        fname_model = f"cnn_coarsed_{tag}.keras"
 
-        X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri = read_scale_data(
-            model_save_dir=save_dir, land_ocean_tag=tag)
+        (X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri, cgz_train, cgz_val, _, 
+         omega_hat_train, omega_hat_val, _, k, l, m) = read_scale_data(
+            model_save_dir=save_dir,
+            land_ocean_tag=tag
+        )
 
         y_pred_train, y_pred_val, y_pred_test = inference(
             X_train=X_train, X_val=X_val, X_test=X_test,
@@ -269,8 +274,14 @@ if __name__ == "__main__":
 
             regims[tag][season] = regime_results
 
+        del (X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri, cgz_train, cgz_val,
+         omega_hat_train, omega_hat_val, _, k, l, m, y_pred_train, y_pred_val,
+           y_pred_test,  y_train_jan, y_train_aug, y_val_jan, y_val_aug, y_pred_train_jan,
+           y_pred_val_jan, y_pred_val_aug)
+
     (Energy_test, Energy_model, uw_test, uw_model, vw_test, vw_model,
-     uw_model_zonal_mean, uw_test_zonal_mean, vw_model_zonal_mean, vw_test_zonal_mean, lat_bins) = physical_values()
+    uw_model_zonal_mean, uw_test_zonal_mean, vw_model_zonal_mean,
+    vw_test_zonal_mean, lat_bins) = physical_values()
 
     results["Energy_test"] = Energy_test
     results["Energy_model"] = Energy_model
@@ -284,5 +295,5 @@ if __name__ == "__main__":
     results["vw_test_zonal_mean"] = vw_test_zonal_mean
     results["lat_bins"] = lat_bins
 
-    joblib.dump(results, save_dir + "metrics/results_physics_cnn_coarsed_grained.pkl")
-    joblib.dump(regims, save_dir + "metrics/regimes_physics_cnn_coarsed_grained.pkl")
+    joblib.dump(results, save_dir + "metrics/results_2_cnn_coarsed_grained.pkl")
+    joblib.dump(regims, save_dir + "metrics/regimes_2_cnn_coarsed_grained.pkl")

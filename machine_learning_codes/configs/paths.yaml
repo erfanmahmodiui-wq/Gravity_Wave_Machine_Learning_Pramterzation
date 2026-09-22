@@ -5,12 +5,14 @@ grid_file_v2:               "/work/bb1097/b381585/data/icon_grid_0012_R02B04_G-v
 plots_dir:                 "/work/bb1097/b383521/plots/"
 
 # ── Coarse-grained gravity-wave action spectra ─────────────────────────
-coarse_action_dir:         "/work/bb1097/b383521/GW_Data_Summer/coarsed_action/"   # August/summer group
+coarse_action_dir_aug:         "/work/bb1097/b383521/GW_Data_Summer/coarsed_action/"   # August/summer group
 coarse_action_dir_jan:      "/work/bb1097/b383521/GW_Data/coarsed_action/"          # January/winter group
+coarse_action_dir_Nov:      "/work/bb1097/b383521/GW_Data_Nov/coarsed_action/"          # January/winter group
 
 # ── ML-ready datasets (land/ocean, jan/aug) ────────────────────────────
 data_base_dir_jan:          "/work/bb1097/b383521/GW_Data/Data_set_ML/"
 data_base_dir_aug:          "/work/bb1097/b383521/GW_Data_Summer/Data_set_ML/"
+data_base_dir_Nov:          "/work/bb1097/b383521/GW_Data_Nov/Data_set_ML/"
 
 # ── Model training / saving ────────────────────────────────────────────
 save_dir:                   "/work/bb1097/b383521/ML_models/coarsed_grained/"

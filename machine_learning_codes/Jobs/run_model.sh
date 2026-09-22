@@ -11,4 +11,5 @@
 mkdir -p slurm_logs
 
 # Run Python with unbuffered output
-/home/b/b383521/venvs/py310_jupyter/bin/python -u  -m /home/b/b383521/Gravity_Wave_Machine_Learning_Pramterzation/machine_learning_codes/model/model.py
+cd /home/b/b383521/Gravity_Wave_Machine_Learning_Pramterzation
+/home/b/b383521/venvs/py310_jupyter/bin/python -m machine_learning_codes.model.model

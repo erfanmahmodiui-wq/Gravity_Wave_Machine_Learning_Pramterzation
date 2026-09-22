@@ -10,8 +10,10 @@ import xarray as xr
 from matplotlib.collections import PolyCollection
 from matplotlib.ticker import AutoMinorLocator
 from scipy.stats import binned_statistic
-
-from src.models.model import read_scale_data
+import os
+import sys
+sys.path.append(os.path.abspath(".."))
+from model.model import read_scale_data
 from src.config import load_paths
 
 
@@ -129,11 +131,10 @@ def plot_global_map_new(var, save_dir, grid_file, filename="global_flux_map", ti
     print(f"--> saved to {outpath}")
 
 
-def compute_intrinsic_feq_cgz(path_grid, data_base_dir_jan, data_base_dir_aug, coarse_action_dir_jan):
+def compute_intrinsic_feq_cgz(data_base_dir_jan, data_base_dir_aug, coarse_action_dir_jan):
     ntime = 44
     intrinsic_freq = np.zeros((20480, ntime, 144))
     cgz = np.zeros((20480, ntime, 144))
-    k_lunch = l_lunch = m_lunch = None
 
     for tag in ["ocean", "land"]:
         with xr.open_dataset(coarse_action_dir_jan + "coarse_gw_spectrum_group_1_fileslide_0.nc") as ds:
@@ -143,31 +144,19 @@ def compute_intrinsic_feq_cgz(path_grid, data_base_dir_jan, data_base_dir_aug, c
 
         fname = "corsed_action_land.pkl" if tag == "land" else "corsed_action_ocean.pkl"
         Data_Base_jan = joblib.load(data_base_dir_jan + fname)
-        N2_jan = Data_Base_jan["X_test"][:, :, 30]
-        ntri = Data_Base_jan["ntri"]
+        cgz_jan = Data_Base_jan["cgz_test"]
+        omega_hat_jan = Data_Base_jan["omega_hat_test"]
+        ntri          = Data_Base_jan["ntri"]
+
 
         Data_Base_aug = joblib.load(data_base_dir_aug + fname)
-        N2_aug = Data_Base_aug["X_test"][:, :, 30]
+        cgz_aug = Data_Base_aug["cgz_test"]
+        omega_hat_aug = Data_Base_aug["omega_hat_test"]
 
-        N2 = np.concatenate([N2_jan, N2_aug], axis=1)
-        Om = 7.2921e-5  # 2pi/24h in rad/s
-        clat = xr.open_dataset(path_grid).clat.data[ntri]
-        f = 2 * Om * np.sin(clat)
-
-        k3D = k_lunch[None, None, None, :, None]
-        l3D = l_lunch[None, None, :, None, None]
-        m3D = m_lunch[None, None, None, None, :]
-
-        N2_3D = N2[:, :, None, None, None]
-        f_3D = f[:, None, None, None, None]
-        f2_3D = f_3D ** 2
-
-        kh2 = k3D ** 2 + l3D ** 2
-        kappa2 = kh2 + m3D ** 2
-
-        omega = np.sqrt((N2_3D * kh2 + f2_3D * m3D ** 2) / kappa2)
-        intrinsic_freq[ntri, :, ] = omega.reshape(len(ntri), ntime, 144)
-        c_gz = -(N2_3D - f2_3D) * kh2 * m3D / (omega * kappa2 ** 2)
+        omega_hat = np.concatenate([omega_hat_jan, omega_hat_aug], axis=1)
+        c_gz       = np.concatenate([cgz_jan, cgz_aug], axis=1)
+        
+        intrinsic_freq[ntri, :, ] = omega_hat.reshape(len(ntri), ntime, 144)
         cgz[ntri, ...] = c_gz.reshape(len(ntri), ntime, 144)
 
     return cgz, intrinsic_freq, k_lunch, l_lunch, m_lunch
@@ -216,8 +205,11 @@ def compute_wave_action_density(ml_model_dir, save_dir):
     global_N_test = np.zeros((20480, ntime, 144))
     for tag in ["land", "ocean"]:
         fname_model = f"cnn_coarsed_{tag}.keras"
-        _, _, _, _, X_test, y_test, X_scaler, ntri = read_scale_data(
-            model_save_dir=save_dir, land_ocean_tag=tag)
+        (_, _, _, _, X_test, y_test, _, ntri, _, _, _, 
+         _, _, _, _, _, _) = read_scale_data(
+            model_save_dir=save_dir,
+            land_ocean_tag=tag
+        )
         model = tf.keras.models.load_model(
             ml_model_dir + fname_model,
             custom_objects=False, compile=False)
@@ -232,13 +224,13 @@ def compute_wave_action_density(ml_model_dir, save_dir):
     return global_N_model, global_N_test
 
 
-def compute_energy_flux(global_N_model, global_N_test, cgz, intrinsic_freq, parsavel_coff, k_launch, l_launch, m_launch):
+def compute_energy_flux(global_N_model, global_N_test, cgz, intrinsic_freq, parsavel_coff, k_launch, l_launch):
     ntime = global_N_model.shape[1]
     cgz_bin = cgz.reshape(20480, ntime, 6, 6, 4)
     Energy_test = np.sum(global_N_test * intrinsic_freq, axis=-1)
     Energy_model = np.sum(global_N_model * intrinsic_freq, axis=-1)
-    k3D = k_launch[None, None, None, :, None]
-    l3D = l_launch[None, None, :, None, None]
+    k3D = k_launch[None, None, :, None, None]
+    l3D = l_launch[None, None, None, :, None]
     N_global_test_bin = global_N_test.reshape(20480, ntime, 6, 6, 4)
     N_global_model_bin = global_N_model.reshape(20480, ntime, 6, 6, 4)
     uw_test = np.sum(N_global_test_bin * k3D * cgz_bin, axis=(2, 3, 4)) * parsavel_coff
@@ -252,9 +244,9 @@ def zonally_avarge(var, grid_file):
     gridfil = xr.open_dataset(grid_file)
     clat = np.rad2deg(gridfil.clat.values)
     lat_bins = np.linspace(clat.min(), clat.max(), 101)
-    zonal_mean = np.zeros((100, 44))
+    zonal_mean = np.zeros((100, var.shape[1]))
 
-    for k in range(44):
+    for k in range(var.shape[1]):
         zonal_mean[:, k], _, _ = binned_statistic(
             clat, var[:, k], statistic='mean', bins=lat_bins)
     return zonal_mean, lat_bins
@@ -286,7 +278,6 @@ def physical_values():
     paths = load_paths()
 
     cgz, intrinsic_freq, k, l, m = compute_intrinsic_feq_cgz(
-        path_grid=paths["grid_file_low"],
         data_base_dir_jan=paths["data_base_dir_jan"],
         data_base_dir_aug=paths["data_base_dir_aug"],
         coarse_action_dir_jan=paths["coarse_action_dir_jan"],
@@ -296,7 +287,7 @@ def physical_values():
     global_N_model, global_N_test = compute_wave_action_density(
         ml_model_dir=paths["ml_model_dir"], save_dir=paths["save_dir"])
     Energy_test, Energy_model, uw_test, uw_model, vw_test, vw_model = compute_energy_flux(
-        global_N_model, global_N_test, cgz, intrinsic_freq, parsavel_coff, k, l, m)
+        global_N_model, global_N_test, cgz, intrinsic_freq, parsavel_coff, k, l)
     uw_model_zonal_mean, _ = zonally_avarge(var=uw_model, grid_file=paths["grid_file_low"])
     uw_test_zonal_mean, lat_bins = zonally_avarge(var=uw_test, grid_file=paths["grid_file_low"])
     vw_model_zonal_mean, _ = zonally_avarge(var=vw_model, grid_file=paths["grid_file_low"])
@@ -309,7 +300,8 @@ if __name__ == "__main__":
     paths = load_paths()
 
     (Energy_test, Energy_model, uw_test, uw_model, vw_test, vw_model,
-     uw_model_zonal_mean, uw_test_zonal_mean, vw_model_zonal_mean, vw_test_zonal_mean, lat_bins) = physical_values()
+    uw_model_zonal_mean, uw_test_zonal_mean, vw_model_zonal_mean,
+    vw_test_zonal_mean, lat_bins) = physical_values()
 
     metrics_dir = paths["flux_energy_metrics_dir"]
     np.save(metrics_dir + "Energy_test.npy", Energy_test)

@@ -74,7 +74,7 @@ def global_map_energy(path_grid_low, var, figpath, label):
     return
 
 
-def save_grad(grad, grad_mag, label, resolved_flow_dir):
+def save_grad(grad, grad_mag, label, resolved_flow_dir, year):
     ds = xr.Dataset(
         data_vars=dict(
             gradian=(["ntri", "time", "heigts", "del_x_y"], grad),
@@ -82,20 +82,20 @@ def save_grad(grad, grad_mag, label, resolved_flow_dir):
         ),
         attrs=dict(description="Gradian"),
     )
-    fname = "gradian_" + label + "_2016.nc"
+    fname = "gradian_" + label + f"_{year}.nc"
     ds.to_netcdf(resolved_flow_dir + fname)
 
 
-def save_vorticity(vorticity, resolved_flow_dir):
+def save_vorticity(vorticity, resolved_flow_dir, year):
     ds = xr.Dataset(
         data_vars=dict(gradian=(["ntri", "time", "heigts"], vorticity)),
-        attrs=dict(description="voorticity_2016"),
+        attrs=dict(description=f"voorticity_{year}"),
     )
-    fname = "vorticity_2016.nc"
+    fname = f"vorticity_{year}.nc"
     ds.to_netcdf(resolved_flow_dir + fname)
 
 
-def Gree_gauss(path_grid, avarge_path, variable, plots_dir):
+def Green_gauss(path_grid, avarge_path, variable, plots_dir, year):
     ds_grid = xr.open_dataset(path_grid)
     cell_area = ds_grid.cell_area.data
     nx = ds_grid.zonal_normal_primal_edge.data
@@ -106,7 +106,7 @@ def Gree_gauss(path_grid, avarge_path, variable, plots_dir):
     edge_len = ds_grid.edge_length.data
     edge_dist = ds_grid.edge_cell_distance.data
 
-    ds_var = xr.open_dataset(avarge_path + "average_" + variable + "-sphere_2016.nc")
+    ds_var = xr.open_dataset(avarge_path + "average_" + variable + f"-sphere_{year}.nc")
     var = ds_var["var"].data
     nt, nz, nCell = var.shape
     grad = np.zeros((nCell, nt, nz, 2))
@@ -139,19 +139,19 @@ def Gree_gauss(path_grid, avarge_path, variable, plots_dir):
         grad[c, ...] = grad_sum / cell_area[c]
 
     grad_mag = np.sqrt(grad[..., 0]**2 + grad[..., 1]**2)
-    save_grad(grad=grad, grad_mag=grad_mag, label=variable, resolved_flow_dir=avarge_path)
+    save_grad(grad=grad, grad_mag=grad_mag, label=variable, resolved_flow_dir=avarge_path, year=year)
     global_map_energy(path_grid_low=path_grid, var=grad_mag[:, 0, 0],
                        figpath=plots_dir + "gradian_" + variable,
                        label=fr"$\|\nabla {variable}\|$")
 
 
-def compute_vorticity(path_grid, resolved_flow_dir, plots_dir):
-    ds_u = xr.open_dataset(resolved_flow_dir + "gradian_u_2016.nc")
-    ds_v = xr.open_dataset(resolved_flow_dir + "gradian_v_2016.nc")
+def compute_vorticity(path_grid, resolved_flow_dir, plots_dir, year):
+    ds_u = xr.open_dataset(resolved_flow_dir + f"gradian_u_{year}.nc")
+    ds_v = xr.open_dataset(resolved_flow_dir + f"gradian_v_{year}.nc")
     du = ds_u.gradian.data
     dv = ds_v.gradian.data
     vorticity = dv[:, :, :, 0] - du[:, :, :, 1]
-    save_vorticity(vorticity, resolved_flow_dir)
+    save_vorticity(vorticity, resolved_flow_dir, year=year)
     global_map_energy(path_grid_low=path_grid, var=vorticity[:, 0, 0],
                        figpath=plots_dir + "vorticity", label=fr"$\omega_z$")
 
@@ -161,8 +161,9 @@ if __name__ == "__main__":
     path_grid    = paths["grid_file_low"]
     avarge_path  = paths["resolved_flow_dir"]
     plots_dir    = paths["plots_dir"]
+    year_tag = "2019"
 
     for variable in ["u", "v", "w", "p", "T"]:
         print(f"computing variable {variable}")
-        Gree_gauss(path_grid, avarge_path=avarge_path, variable=variable, plots_dir=plots_dir)
-    compute_vorticity(path_grid=path_grid, resolved_flow_dir=avarge_path, plots_dir=plots_dir)
+        Green_gauss(path_grid, avarge_path=avarge_path, variable=variable, plots_dir=plots_dir, year=year_tag)
+    compute_vorticity(path_grid=path_grid, resolved_flow_dir=avarge_path, plots_dir=plots_dir, year=year_tag)

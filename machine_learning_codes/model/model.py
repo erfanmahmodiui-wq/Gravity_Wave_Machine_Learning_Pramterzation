@@ -15,7 +15,7 @@ from tensorflow.keras.regularizers import l2
 from src.config import load_paths
 
 
-def read_scale_data(model_save_dir, land_ocean_tag="ocean"):
+def read_scale_data(model_save_dir, coarse_action_dir_jan, land_ocean_tag="ocean", physics=False):
     print("Loading databases...")
 
     paths = load_paths()
@@ -32,6 +32,19 @@ def read_scale_data(model_save_dir, land_ocean_tag="ocean"):
     X_train = np.concatenate([Data_Base_jan["X_train"], Data_Base_aug["X_train"]], axis=1)
     X_val   = np.concatenate([Data_Base_jan["X_val"],   Data_Base_aug["X_val"]],   axis=1)
     X_test  = np.concatenate([Data_Base_jan["X_test"],  Data_Base_aug["X_test"]],  axis=1)
+    
+    cgz_train = np.concatenate([Data_Base_jan["cgz_train"], Data_Base_aug["cgz_train"]], axis=1)
+    cgz_val = np.concatenate([Data_Base_jan["cgz_val"], Data_Base_aug["cgz_val"]], axis=1)
+    cgz_test = np.concatenate([Data_Base_jan["cgz_test"], Data_Base_aug["cgz_test"]], axis=1)
+    omega_hat_train = np.concatenate([Data_Base_jan["omega_hat_train"], Data_Base_aug["omega_hat_train"]], axis=1)
+    omega_hat_val = np.concatenate([Data_Base_jan["omega_hat_val"], Data_Base_aug["omega_hat_val"]], axis=1)
+    omega_hat_test = np.concatenate([Data_Base_jan["omega_hat_test"], Data_Base_aug["omega_hat_test"]], axis=1)
+
+    with xr.open_dataset(coarse_action_dir_jan + "coarse_gw_spectrum_group_1_fileslide_0.nc") as ds:
+        k_lunch = ds.k.data
+        l_lunch = ds.l.data
+        m_lunch = -ds.m.data
+
 
     y_train = np.concatenate([Data_Base_jan["y_train"], Data_Base_aug["y_train"]], axis=1)
     y_val   = np.concatenate([Data_Base_jan["y_val"],   Data_Base_aug["y_val"]],   axis=1)
@@ -56,7 +69,8 @@ def read_scale_data(model_save_dir, land_ocean_tag="ocean"):
     y_train = y_train.reshape(-1, n_targets)
     y_val   = y_val.reshape(-1, n_targets)
     y_test  = y_test.reshape(-1, n_targets)
-
+    
+    
     y_train = np.log1p(y_train)
     y_val   = np.log1p(y_val)
     y_test  = np.log1p(y_test)
@@ -68,42 +82,9 @@ def read_scale_data(model_save_dir, land_ocean_tag="ocean"):
 
     joblib.dump(x_scaler, f"{model_save_dir}scaler/scaler_X_{land_ocean_tag}.pkl")
 
-    return X_train, X_val, y_train, y_val, X_test, y_test, x_scaler, ntri
-
-
-def corlios_parameter(ntri, ntime, path_grid=None):
-    if path_grid is None:
-        path_grid = load_paths()["grid_file_low"]
-    Om = 7.2921e-5  # 2pi/24h in rad/s
-    clat = xr.open_dataset(path_grid).clat.data[ntri]
-    f = 2 * Om * np.sin(clat)
-    f_2d = np.repeat(f[:, None], ntime, axis=1)
-    return f_2d
-
-
-def compute_cgz_batch(N2, k, l, m, f2, cgz_percentile_clip=99.5):
-    N2 = np.asarray(N2).reshape(-1)
-
-    k3D = k[None, None, :, None]
-    l3D = l[None, :, None, None]
-    m3D = m[None, None, None, :]
-
-    N2_3D = N2[:, None, None, None]
-    f2_3D = f2[:, None, None, None]
-
-    kh2 = k3D**2 + l3D**2
-    kappa2 = kh2 + m3D**2
-
-    omega = np.sqrt((N2_3D * kh2 + f2_3D * m3D**2) / kappa2)
-    omega_safe = np.where(omega < 1e-6, 1e-6, omega)
-
-    cgz = -(N2_3D - f2_3D) * kh2 * m3D / (omega_safe * kappa2**2)
-
-    clip_val = np.nanpercentile(np.abs(cgz), cgz_percentile_clip)
-    cgz = np.clip(cgz, -clip_val, clip_val)
-    cgz = np.nan_to_num(cgz, nan=0.0, posinf=clip_val, neginf=-clip_val)
-
-    return cgz.reshape(N2.shape[0], -1)
+    return (X_train, X_val, y_train, y_val, X_test, y_test, x_scaler, ntri, cgz_train.reshape(-1, n_targets), cgz_val.reshape(-1, n_targets),
+             cgz_test.reshape(-1, n_targets), omega_hat_train.reshape(-1, n_targets), omega_hat_val.reshape(-1, n_targets), omega_hat_test.reshape(-1, n_targets),
+            k_lunch.reshape(-1, 1, 1), l_lunch.reshape(1, -1, 1), m_lunch.reshape(1, 1, -1))
 
 
 def read_scale_data_lag(data_base_path, model_save_dir, land_ocean_tag="ocean"):
@@ -233,8 +214,8 @@ def make_tf_dataset(X, y, batch_size, shuffle=True, repeat=True):
     return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
-def make_tf_dataset_physics(X, y, cgz, batch_size, shuffle=True, repeat=True):
-    y_combined = np.concatenate([y, cgz], axis=1)
+def make_tf_dataset_physics(X, y, cgz, omega_hat, batch_size, shuffle=True, repeat=True):
+    y_combined = np.concatenate([y, cgz, omega_hat], axis=1)
     ds = tf.data.Dataset.from_tensor_slices((
         tf.cast(X, tf.float32),
         tf.cast(y_combined, tf.float32)
@@ -259,131 +240,39 @@ def make_tf_dataset_weighted(X, y, sample_weight, batch_size, shuffle=True, repe
     return ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
-def physics_flux_loss(k3D_flat, l3D_flat, y_var_const, n_targets=144, alpha=0.1, scale_to_mpa=1000.0):
-    k3D_flat_tf = tf.constant(k3D_flat, dtype=tf.float32)
-    l3D_flat_tf = tf.constant(l3D_flat, dtype=tf.float32)
-    y_var_tf    = tf.constant(y_var_const, dtype=tf.float32)
+def physics_flux_loss(k, l, n_targets=144, coff_wave_action=0.5, coff_flux_x=0, coff_flux_y=0.0, energy_coff=0.5):
+    k = tf.constant(k, dtype=tf.float32)
+    l = tf.constant(l, dtype=tf.float32)
 
     def loss(y_combined_true, y_pred):
-        y_true    = y_combined_true[:, :n_targets]
-        cgz_batch = y_combined_true[:, n_targets:]
+        y_true    = tf.reshape(y_combined_true[:, :n_targets], (-1, 6, 6, 4))
+        cgz_batch = tf.reshape(y_combined_true[:, n_targets:2*n_targets], (-1, 6, 6, 4))
+        omega_hat_batch = tf.reshape(y_combined_true[:, 2*n_targets:], (-1, 6, 6, 4))
 
         N_true = tf.math.expm1(y_true)
+        y_pred = tf.reshape(y_pred, (-1, 6, 6, 4))
         N_pred = tf.math.expm1(y_pred)
 
-        uw_true = tf.reduce_sum(N_true * k3D_flat_tf[None, :] * cgz_batch, axis=1) * scale_to_mpa
-        uw_pred = tf.reduce_sum(N_pred * k3D_flat_tf[None, :] * cgz_batch, axis=1) * scale_to_mpa
+        uw_true = tf.reduce_sum(N_true * k[None, :, None, None] * cgz_batch, axis=(1, 2, 3))
+        uw_pred = tf.reduce_sum(N_pred * k[None, :, None, None] * cgz_batch, axis=(1, 2, 3))
+        vw_true = tf.reduce_sum(N_true * l[None, None, :, None] * cgz_batch, axis=(1, 2, 3))
+        vw_pred = tf.reduce_sum(N_pred * l[None, None, :, None] * cgz_batch, axis=(1, 2, 3))
+        E_true  = tf.reduce_sum(N_true*omega_hat_batch, axis=(1, 2, 3))
+        E_pred  = tf.reduce_sum(N_pred*omega_hat_batch, axis=(1, 2, 3))
 
-        flux_err = tf.reduce_mean(tf.square(uw_true - uw_pred)) / \
+        uw_err = tf.reduce_mean(tf.square(uw_true - uw_pred)) / \
                    (tf.reduce_mean(tf.square(uw_true)) + 1e-9)
+        vw_err = tf.reduce_mean(tf.square(vw_true - vw_pred)) / \
+                           (tf.reduce_mean(tf.square(vw_true)) + 1e-9)
+        E_err = tf.reduce_mean(tf.square(E_true - E_pred)) / \
+                           (tf.square(E_true) + 1e-9)
+        
+        mse_raw  = tf.reduce_sum((y_true - y_pred)**2, axis=(1, 2, 3))
+        mse_norm = tf.reduce_mean(mse_raw / (tf.reduce_sum(y_true**2, axis=(1, 2, 3)) + 1e-9))
 
-        mse_raw  = tf.reduce_mean(tf.square(y_true - y_pred))
-        mse_norm = mse_raw / y_var_tf
-
-        return alpha * mse_norm + (1 - alpha) * flux_err
-    return loss
-
-
-def realscale_RRE(clip_val, y_scaler):
-    clip_val_tf = tf.constant(clip_val,        dtype=tf.float32)
-    mean_tf     = tf.constant(y_scaler.mean_,  dtype=tf.float32)
-    scale_tf    = tf.constant(y_scaler.scale_, dtype=tf.float32)
-
-    def inverse_transform_tf(y):
-        y_log  = y * scale_tf + mean_tf
-        y_real = tf.math.expm1(y_log)
-        return y_real
-
-    def metric(y_true, y_pred):
-        y_true_real = tf.clip_by_value(inverse_transform_tf(y_true), 0, clip_val_tf)
-        y_pred_real = tf.clip_by_value(inverse_transform_tf(y_pred), 0, clip_val_tf)
-        numerator   = tf.reduce_sum(tf.square(y_true_real - y_pred_real), axis=-1)
-        denominator = tf.reduce_sum(tf.square(y_true_real), axis=-1)
-
-        mask        = denominator > 1.0
-        numerator   = tf.boolean_mask(numerator,   mask)
-        denominator = tf.boolean_mask(denominator, mask)
-
-        return tf.reduce_mean(numerator / (denominator + 1e-8))
-    metric.__name__ = "rre_real"
-    return metric
-
-
-def real_scale_r2(clip_val, y_scaler):
-    clip_val_tf = tf.math.expm1(tf.constant(clip_val, dtype=tf.float32))
-    mean_tf     = tf.constant(y_scaler.mean_,  dtype=tf.float32)
-    scale_tf    = tf.constant(y_scaler.scale_, dtype=tf.float32)
-
-    def inverse_transform_tf(y):
-        y_log  = y * scale_tf + mean_tf
-        y_real = tf.math.expm1(y_log)
-        return y_real
-
-    def metric(y_true, y_pred):
-        y_true_real = tf.clip_by_value(inverse_transform_tf(y_true), 0, clip_val_tf)
-        y_pred_real = tf.clip_by_value(inverse_transform_tf(y_pred), 0, clip_val_tf)
-
-        ss_res = tf.reduce_sum(tf.square(y_true_real - y_pred_real))
-        ss_tot = tf.reduce_sum(tf.square(y_true_real - tf.reduce_mean(y_true_real))) + 1e-8
-        return 1.0 - ss_res / ss_tot
-    metric.__name__ = "r2_real"
-    return metric
-
-
-def real_scale_cosine_similarity(clip_val, y_scaler):
-    clip_val_tf = tf.constant(clip_val,        dtype=tf.float32)
-    mean_tf     = tf.constant(y_scaler.mean_,  dtype=tf.float32)
-    scale_tf    = tf.constant(y_scaler.scale_, dtype=tf.float32)
-
-    def inverse_transform_tf(y):
-        y_log  = y * scale_tf + mean_tf
-        y_real = tf.math.expm1(y_log)
-        return y_real
-
-    def metric(y_true, y_pred):
-        y_true_real = tf.clip_by_value(inverse_transform_tf(y_true), 0, clip_val_tf)
-        y_pred_real = tf.clip_by_value(inverse_transform_tf(y_pred), 0, clip_val_tf)
-
-        dot_product = tf.reduce_sum(y_true_real * y_pred_real, axis=-1)
-        norm_true = tf.norm(y_true_real, axis=-1)
-        norm_pred = tf.norm(y_pred_real, axis=-1)
-        denominator = norm_true * norm_pred + 1e-8
-
-        cosine_sim = dot_product / denominator
-        return tf.reduce_mean(cosine_sim)
-
-    metric.__name__ = "cosine_sim_real"
-    return metric
-
-
-def combined_loss(alpha):
-    def loss(y_true, y_pred):
-        mse = tf.reduce_mean(tf.square(y_true - y_pred))
-
-        y_true_real = tf.math.expm1(y_true)
-        y_pred_real = tf.math.expm1(y_pred)
-        numerator   = tf.reduce_sum(tf.square(y_true_real - y_pred_real), axis=-1)
-        denominator = tf.reduce_sum(tf.square(y_true_real), axis=-1) + 1e-8
-        rre         = tf.reduce_mean(numerator / denominator)
-
-        return alpha * mse + (1 - alpha) * rre
-    return loss
-
-
-def Energy_bias(y_true, y_pred, clip_val=20):
-    eps = 1e-8
-
-    y_true_c = tf.clip_by_value(y_true, 0, clip_val)
-    y_pred_c = tf.clip_by_value(y_pred, 0, clip_val)
-
-    x_true = tf.math.expm1(y_true_c)
-    x_pred = tf.math.expm1(y_pred_c)
-
-    E_true = tf.reduce_sum(x_true, axis=1)
-    E_pred = tf.reduce_sum(x_pred, axis=1)
-
-    bias = tf.reduce_mean((E_pred - E_true) / (E_true + eps))
-    return bias
+        error =       coff_wave_action * mse_norm + coff_flux_x * uw_err + coff_flux_y * vw_err + energy_coff*E_err  
+        return error
+    return loss             
 
 
 def model_architecture(input_shape, n_latent, training=False):
@@ -431,13 +320,12 @@ def weighted_mae_loss(p90, tail_weight=2.0):
         return tf.reduce_mean(weights * residuals)
     return loss
 
-
-def expectile_loss(tau):
-    def loss(y_true, y_pred):
-        error = y_true - y_pred
-        weight = tf.where(error > 0, tau, 1 - tau)
-        return tf.reduce_mean(weight * tf.square(error))
-    return loss
+def MSE_loss_N():
+    def metric(y_combined_true, y_pred):
+        y_true = y_combined_true[:, :144]
+        return tf.reduce_mean(tf.square(y_true - y_pred))
+    metric.__name__ = "MSE"
+    return metric
 
 
 def model_architecture_DNN(input_shape, n_latent):
@@ -551,7 +439,7 @@ def model_architecture_spectral_cnn(input_shape, n_k=6, n_l=6, n_m=4):
     x = layers.Conv3D(4, kernel_size=(3, 3, 3), padding="same",
                        activation="relu", kernel_regularizer=l2(1e-3))(x)
 
-    x = layers.Conv3D(1, kernel_size=(1, 1, 1), padding="same")(x)
+    x = layers.Conv3D(1, kernel_size=(1, 1, 1), padding="same", activation = "softplus")(x)
 
     outputs = layers.Reshape((n_latent,))(x)
 
@@ -577,8 +465,8 @@ def physics_flux_metric(k3D_flat, n_targets=144, scale_to_mpa=1000.0):
     return flux_rre
 
 
-def fit_save_model(X_train, X_val, y_train, y_val, save_dir_model, land_ocean_tag,
-                    batch_size=125, epochs=50, arc="DNN"):
+def fit_save_model(X_train, X_val, y_train, y_val, k, l, save_dir_model, land_ocean_tag,
+                    batch_size=125, epochs=50, arc="CNN", physics=False):
 
     if arc == "GRU":
         input_shape = (X_train.shape[1], X_train.shape[2])
@@ -598,27 +486,10 @@ def fit_save_model(X_train, X_val, y_train, y_val, save_dir_model, land_ocean_ta
     elif arc == "CNN":
         model = model_architecture_spectral_cnn(input_shape=input_shape)
 
-    N_train_real = np.expm1(y_train)
-    N_val_real   = np.expm1(y_val)
-    E_train      = np.sum(N_train_real, axis=1)
-    E_val        = np.sum(N_val_real, axis=1)
-    p90_E        = np.percentile(E_train, 90)
-    p99_E        = np.percentile(E_train, 99)
-    print(f"p90_E={p90_E}, p99_E={p99_E}")
-    sample_weight_train = np.where(
-        E_train > p99_E, 5.0,
-        np.where(E_train > p90_E, 2.0, 1.0)
-    ).astype("float32")
-    sample_weight_val = np.where(
-        E_val > p99_E, 5.0,
-        np.where(E_val > p90_E, 2.0, 1.0)
-    ).astype("float32")
-    del E_train, E_val, N_train_real, N_val_real
-
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-        loss="mse",
-        metrics=["mse"]
+        loss=physics_flux_loss(k=k, l=l, n_targets=144),
+        metrics=[MSE_loss_N()]
     )
 
     if arc == "GRU":
@@ -626,7 +497,7 @@ def fit_save_model(X_train, X_val, y_train, y_val, save_dir_model, land_ocean_ta
     elif arc == "DNN":
         best_model_path = f"{save_dir_model}/models/dnn_coarsed_{land_ocean_tag}.keras"
     elif arc == "CNN":
-        best_model_path = f"{save_dir_model}/models/cnn_loss_coarsed_{land_ocean_tag}.keras"
+        best_model_path = f"{save_dir_model}/models/cnn_pinn_coarsed_{land_ocean_tag}.keras"
 
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         filepath=best_model_path, monitor='val_MSE', save_best_only=True, mode='min', verbose=1
@@ -642,9 +513,13 @@ def fit_save_model(X_train, X_val, y_train, y_val, save_dir_model, land_ocean_ta
 
     steps_per_epoch  = n_samples // batch_size
     validation_steps = X_val.shape[0] // batch_size
+    if not physics:
+        train_ds = make_tf_dataset(X_train, y_train, batch_size=batch_size, shuffle=True, repeat=True)
+        val_ds   = make_tf_dataset(X_val,   y_val,   batch_size=batch_size, shuffle=False, repeat=True)
 
-    train_ds = make_tf_dataset_weighted(X_train, y_train, sample_weight_train, batch_size=125)
-    val_ds   = make_tf_dataset_weighted(X_val,   y_val,   sample_weight_val,   batch_size=125)
+    if physics:
+        train_ds = make_tf_dataset_physics(X_train, y_train, cgz_train, omega_hat_train, batch_size=batch_size, shuffle=True, repeat=True)
+        val_ds   = make_tf_dataset_physics(X_val, y_val, cgz_val, omega_hat_val, batch_size=batch_size, shuffle=False, repeat=True)
 
     history = model.fit(
         train_ds,
@@ -731,9 +606,11 @@ if __name__ == "__main__":
     paths = load_paths()
     save_dir = paths["save_dir"]
 
-    for tag in ["land", "ocean"]:
-        X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri = read_scale_data(
+    for tag in ["ocean"]:
+        (X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri, cgz_train, cgz_val, _, 
+         omega_hat_train, omega_hat_val, _, k, l, m) = read_scale_data(
             model_save_dir=save_dir,
+            coarse_action_dir_jan=paths["coarse_action_dir_jan"],
             land_ocean_tag=tag
         )
         print(f"var of the train data {np.var(y_train)}")
@@ -742,6 +619,7 @@ if __name__ == "__main__":
         model, history = fit_save_model(
             X_train=X_train, X_val=X_val,
             y_train=y_train, y_val=y_val,
+            k=k, l=l,
             save_dir_model=save_dir,
-            land_ocean_tag=tag, arc="CNN"
+            land_ocean_tag=tag, arc="CNN", physics=True
         )
