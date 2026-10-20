@@ -3,8 +3,10 @@ import joblib
 import tensorflow as tf
 import shap
 import matplotlib.pyplot as plt
-
-from src.models.model import read_scale_data
+import sys
+import os
+sys.path.append(os.path.abspath(".."))
+from model.model import read_scale_data
 from src.config import load_paths
 
 
@@ -150,12 +152,14 @@ def compute_shap_values_by_regime(tag, save_dir, ml_model_dir, shap_dir, n_sampl
 
 def compute_shap_values_global(tag, save_dir, ml_model_dir, shap_dir):
 
-    X_train, X_val, y_train, y_val, X_test, _, _, _ = read_scale_data(
-        model_save_dir=save_dir,
-        land_ocean_tag=tag
-    )
+    (X_train, _, _, _, X_test, _, _, _, _, _, _, 
+         _, _, _, _, _, _) = read_scale_data(
+            model_save_dir=save_dir,
+            coarse_action_dir_jan=paths["coarse_action_dir_jan"],
+            land_ocean_tag=tag
+        )
 
-    fname_model = f"cnn_coarsed_{tag}.keras"
+    fname_model = f"cnn_coarsed_{tag}_2.keras"
 
     model = tf.keras.models.load_model(
         ml_model_dir + fname_model,
@@ -181,12 +185,13 @@ def compute_shap_values_global(tag, save_dir, ml_model_dir, shap_dir):
     # NOTE: rng must be defined before use — the original file used it before
     # definition here, which would raise NameError.
     rng = np.random.default_rng(100)
-    index_rand = [rng.choice(X_test.shape[0], size=200, replace=False) for _ in range(200)]
+    idx = rng.choice(X_test.shape[0], size=200, replace=False)   # 1D index array
+    X_shap = X_test[idx]
+    print(X_shap.shape)  
 
     bg_idx = rng.choice(X_train.shape[0], size=n_background, replace=False)
     background = X_train[bg_idx, :]
 
-    X_shap = X_test[index_rand, :]
 
     explainer = shap.KernelExplainer(core_model.predict, background)
 
@@ -195,7 +200,7 @@ def compute_shap_values_global(tag, save_dir, ml_model_dir, shap_dir):
 
     sv_global = shap_val.values
 
-    np.save(shap_dir + f"svglobal_{tag}.npy", sv_global)
+    np.save(shap_dir + f"svglobal_{tag}_2.npy", sv_global)
 
 
 def plot_shaply_values(sv_best, sv_worst, base_vars, tag, shap_plots_dir, n_levels=6):
@@ -358,5 +363,5 @@ if __name__ == "__main__":
     ml_model_dir = paths["ml_model_dir"]
     shap_dir     = paths["shap_dir"]
 
-    for tag in ["ocean", "land"]:
+    for tag in ["ocean"]:
         compute_shap_values_global(tag, save_dir=save_dir, ml_model_dir=ml_model_dir, shap_dir=shap_dir)

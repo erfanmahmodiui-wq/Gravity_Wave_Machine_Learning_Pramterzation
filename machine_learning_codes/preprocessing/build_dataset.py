@@ -2,7 +2,6 @@ import numpy as np
 import xarray as xr
 import joblib
 from netCDF4 import Dataset
-
 from src.config import load_paths
 
 
@@ -157,7 +156,7 @@ def form_Y_coarseN(coarse_action_dir, groupnr, tag_year="_2019"):
         slide = 73
 
     for i in range(slide):
-        fname = f"coarse_gw_spectrum_group_{groupnr}_fileslide_{i}.nc"
+        fname = f"coarse_gw_spectrum_group_{groupnr}_fileslide_{i}_2.nc"
         with xr.open_dataset(coarse_action_dir + fname, engine="h5netcdf") as ds:
             N = ds.N_action_coarse.data
             time = ds.time.data
@@ -171,7 +170,7 @@ def form_Y_coarseN(coarse_action_dir, groupnr, tag_year="_2019"):
 def compute_cgz_intrinsic_paramters(X_input, coarse_action_dir_jan, path_grid):
     N2 = X_input[:, :, 30]
     
-    with xr.open_dataset(coarse_action_dir_jan + "coarse_gw_spectrum_group_1_fileslide_0.nc") as ds:
+    with xr.open_dataset(coarse_action_dir_jan + "coarse_gw_spectrum_group_1_fileslide_0_2.nc") as ds:
         k_lunch = ds.k.data
         l_lunch = ds.l.data
         m_lunch = -ds.m.data
@@ -293,7 +292,7 @@ def form_ds_outsample(X_input, y_encoded, ntri, cgz, omega_hat, k_lunch, l_lunch
 
 if __name__ == "__main__":
     paths = load_paths()
-    tag_season = "aug"
+    tag_season = "Nov"
     resolved_flow_dirctory = paths["resolved_flow_dir"]
     coarse_action_dir      = paths[f"coarse_action_dir_{tag_season}"]
     Data_Base_Dir           = paths[f"data_base_dir_{tag_season}"]
@@ -316,10 +315,10 @@ if __name__ == "__main__":
             resolved_flow_dirctory, coarse_action_dir, group_id=group_id
         )
         input_orgraphy   = form_X(resolved_flow_dirctory, ntri=ntri,
-                                   orography=orography, tag_year="_2016")
+                                   orography=orography, tag_year="_2019")
         print(input_orgraphy[0, 0, 0])
         spectrum_coarsed = form_Y_coarseN(coarse_action_dir=coarse_action_dir,
-                                           groupnr=group_id, tag_year="_2016")
+                                           groupnr=group_id, tag_year="_2019")
         cgz, omega_hat, k_lunch, l_lunch, m_lunch = compute_cgz_intrinsic_paramters(
             input_orgraphy, coarse_action_dir, grid_path)
 
@@ -341,5 +340,5 @@ if __name__ == "__main__":
 
     Data_based_land = {k: np.concatenate(v, axis=0) for k, v in land_acc.items()}
     Data_based_ocean = {k: np.concatenate(v, axis=0) for k, v in ocean_acc.items()}
-    joblib.dump(Data_based_land, Data_Base_Dir + "corsed_action_land.pkl")
-    joblib.dump(Data_based_ocean, Data_Base_Dir + "corsed_action_ocean.pkl")
+    joblib.dump(Data_based_land, Data_Base_Dir + "corsed_action_land_2.pkl")
+    joblib.dump(Data_based_ocean, Data_Base_Dir + "corsed_action_ocean_2.pkl")

@@ -199,15 +199,16 @@ def parsavel_avarge_cofficents(decomposed_dir, tri_list_dir):
     return prs_coff[:, np.newaxis]
 
 
-def compute_wave_action_density(ml_model_dir, save_dir):
+def compute_wave_action_density(ml_model_dir, save_dir, coarse_action_dir_jan):
     ntime = 44
     global_N_model = np.zeros((20480, ntime, 144))
     global_N_test = np.zeros((20480, ntime, 144))
     for tag in ["land", "ocean"]:
-        fname_model = f"cnn_coarsed_{tag}.keras"
+        fname_model = f"cnn_coarsed_{tag}_2.keras"
         (_, _, _, _, X_test, y_test, _, ntri, _, _, _, 
          _, _, _, _, _, _) = read_scale_data(
             model_save_dir=save_dir,
+            coarse_action_dir_jan=coarse_action_dir_jan,
             land_ocean_tag=tag
         )
         model = tf.keras.models.load_model(
@@ -285,7 +286,7 @@ def physical_values():
     parsavel_coff = parsavel_avarge_cofficents(
         decomposed_dir=paths["decomposed_dir"], tri_list_dir=paths["tri_list_dir"])
     global_N_model, global_N_test = compute_wave_action_density(
-        ml_model_dir=paths["ml_model_dir"], save_dir=paths["save_dir"])
+        ml_model_dir=paths["ml_model_dir"], save_dir=paths["save_dir"], coarse_action_dir_jan=paths["coarse_action_dir_jan"])
     Energy_test, Energy_model, uw_test, uw_model, vw_test, vw_model = compute_energy_flux(
         global_N_model, global_N_test, cgz, intrinsic_freq, parsavel_coff, k, l)
     uw_model_zonal_mean, _ = zonally_avarge(var=uw_model, grid_file=paths["grid_file_low"])

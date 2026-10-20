@@ -14,10 +14,13 @@ def inference(X_train, X_val, X_test, ML_dir, fname_model):
     model = tf.keras.models.load_model(
         ML_dir + fname_model,
         custom_objects=False, compile=False)
-
+    
+    y_pred_test  = model.predict(X_test)
+    print(f"max of predicted test {(np.max(y_pred_test))}")
     y_pred_train = model.predict(X_train)
     y_pred_val   = model.predict(X_val)
-    y_pred_test  = model.predict(X_test)
+    #y_pred_test  = model.predict(X_test)
+    #print(f"max of predicted test {(np.max(y_pred_test))}")
 
     return y_pred_train, y_pred_val, y_pred_test
 
@@ -203,12 +206,13 @@ if __name__ == "__main__":
     results = {}
     regims = {}
 
-    for tag in ["land", "ocean"]:
-        fname_model = f"cnn_coarsed_{tag}.keras"
+    for tag in ["ocean", "land"]:
+        fname_model = f"cnn_coarsed_{tag}_2.keras"
 
         (X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri, cgz_train, cgz_val, _, 
          omega_hat_train, omega_hat_val, _, k, l, m) = read_scale_data(
             model_save_dir=save_dir,
+            coarse_action_dir_jan=paths["coarse_action_dir_jan"],
             land_ocean_tag=tag
         )
 
@@ -295,5 +299,5 @@ if __name__ == "__main__":
     results["vw_test_zonal_mean"] = vw_test_zonal_mean
     results["lat_bins"] = lat_bins
 
-    joblib.dump(results, save_dir + "metrics/results_2_cnn_coarsed_grained.pkl")
-    joblib.dump(regims, save_dir + "metrics/regimes_2_cnn_coarsed_grained.pkl")
+    joblib.dump(results, save_dir + "metrics/results_cnn_coarsed_grained_2.pkl")
+    joblib.dump(regims,  save_dir + "metrics/regimes_cnn_coarsed_grained_2.pkl")

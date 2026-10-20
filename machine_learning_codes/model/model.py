@@ -23,10 +23,10 @@ def read_scale_data(model_save_dir, coarse_action_dir_jan, land_ocean_tag="ocean
     data_base_path_aug = paths["data_base_dir_aug"]
 
     Data_Base_jan = joblib.load(
-        data_base_path_jan + "corsed_action_" + land_ocean_tag + ".pkl"
+        data_base_path_jan + "corsed_action_" + land_ocean_tag + "_2.pkl"
     )
     Data_Base_aug = joblib.load(
-        data_base_path_aug + "corsed_action_" + land_ocean_tag + ".pkl"
+        data_base_path_aug + "corsed_action_" + land_ocean_tag + "_2.pkl"
     )
 
     X_train = np.concatenate([Data_Base_jan["X_train"], Data_Base_aug["X_train"]], axis=1)
@@ -91,7 +91,7 @@ def read_scale_data_lag(data_base_path, model_save_dir, land_ocean_tag="ocean"):
     print("Loading database...")
 
     Data_Base = joblib.load(
-        data_base_path + "Data_Base_Time_parttion_coarsedN_lag_" + land_ocean_tag + ".pkl"
+        data_base_path + "Data_Base_Time_parttion_coarsedN_lag_" + land_ocean_tag + "_2.pkl"
     )
 
     X_train = Data_Base["X_train"]
@@ -146,7 +146,7 @@ def read_scale_data_lag_gru(data_base_path, model_save_dir, land_ocean_tag="ocea
     print("Loading database...")
 
     Data_Base = joblib.load(
-        data_base_path + "Data_Base_Time_parttion_coarsedN_lag_" + land_ocean_tag + ".pkl"
+        data_base_path + "Data_Base_Time_parttion_coarsedN_lag_" + land_ocean_tag + "_2.pkl"
     )
 
     X_train = Data_Base["X_train"]
@@ -432,6 +432,9 @@ def model_architecture_spectral_cnn(input_shape, n_k=6, n_l=6, n_m=4):
 
     x = layers.Dense(n_k * n_l * n_m * 16)(x)
     x = layers.Reshape((n_k, n_l, n_m, 16))(x)
+    
+    x = layers.Conv3D(32, kernel_size=(3, 3, 3), padding="same",
+                           activation="relu", kernel_regularizer=l2(1e-3))(x)
 
     x = layers.Conv3D(16, kernel_size=(3, 3, 3), padding="same",
                        activation="relu", kernel_regularizer=l2(1e-3))(x)
@@ -488,16 +491,16 @@ def fit_save_model(X_train, X_val, y_train, y_val, k, l, save_dir_model, land_oc
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-        loss=physics_flux_loss(k=k, l=l, n_targets=144),
-        metrics=[MSE_loss_N()]
+        loss=["mse"],
+        metrics=["mse"]
     )
 
     if arc == "GRU":
-        best_model_path = f"{save_dir_model}/models/dnn_coarsed_lag_GRU_{land_ocean_tag}.keras"
+        best_model_path = f"{save_dir_model}/models/dnn_coarsed_lag_GRU_{land_ocean_tag}_2.keras"
     elif arc == "DNN":
-        best_model_path = f"{save_dir_model}/models/dnn_coarsed_{land_ocean_tag}.keras"
+        best_model_path = f"{save_dir_model}/models/dnn_coarsed_{land_ocean_tag}_2.keras"
     elif arc == "CNN":
-        best_model_path = f"{save_dir_model}/models/cnn_pinn_coarsed_{land_ocean_tag}.keras"
+        best_model_path = f"{save_dir_model}/models/cnn_coarsed_{land_ocean_tag}_2.keras"
 
     checkpoint = tf.keras.callbacks.ModelCheckpoint(
         filepath=best_model_path, monitor='val_MSE', save_best_only=True, mode='min', verbose=1
@@ -552,11 +555,11 @@ def continue_fit_save_model(X_train, X_val, y_train, y_val, save_dir_model, land
     total_epochs: total desired epoch number, e.g. 50 means train from epoch 17 to 50.
     """
     if arc == "GRU":
-        model_path = f"{save_dir_model}/models/dnn_coarsed_lag_GRU_{land_ocean_tag}.keras"
+        model_path = f"{save_dir_model}/models/dnn_coarsed_lag_GRU_{land_ocean_tag}_2.keras"
     elif arc == "DNN":
-        model_path = f"{save_dir_model}/models/dnn_coarsed_{land_ocean_tag}.keras"
+        model_path = f"{save_dir_model}/models/dnn_coarsed_{land_ocean_tag}_2.keras"
     elif arc == "CNN":
-        model_path = f"{save_dir_model}/models/cnn_coarsed_{land_ocean_tag}.keras"
+        model_path = f"{save_dir_model}/models/cnn_coarsed_{land_ocean_tag}_2.keras"
     else:
         raise ValueError(f"Unknown architecture: {arc}")
 
@@ -606,7 +609,7 @@ if __name__ == "__main__":
     paths = load_paths()
     save_dir = paths["save_dir"]
 
-    for tag in ["ocean"]:
+    for tag in ["land"]:
         (X_train, X_val, y_train, y_val, X_test, y_test, X_scaler, ntri, cgz_train, cgz_val, _, 
          omega_hat_train, omega_hat_val, _, k, l, m) = read_scale_data(
             model_save_dir=save_dir,
@@ -621,5 +624,5 @@ if __name__ == "__main__":
             y_train=y_train, y_val=y_val,
             k=k, l=l,
             save_dir_model=save_dir,
-            land_ocean_tag=tag, arc="CNN", physics=True
+            land_ocean_tag=tag, arc="CNN", physics=False
         )
