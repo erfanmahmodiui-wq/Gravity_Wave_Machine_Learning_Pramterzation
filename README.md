@@ -108,7 +108,7 @@ Other notebooks and scripts support additional analyses and visualizations, incl
 The corresponding dataset is archived separately on Zenodo and contains land and ocean samples for January, August, and November.
 
 - **January and August:** Used for model development, including training, validation, and testing.
-- **November:** Used for independent out-of-month and out-of-year evaluation.
+- **December:** Used for independent out-of-month and out-of-year evaluation.
 
 The target variables are gravity-wave action density spectra represented on a unified \(6 \times 6 \times 4\) wavenumber grid.
 
