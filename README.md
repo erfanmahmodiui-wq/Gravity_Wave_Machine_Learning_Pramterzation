@@ -122,8 +122,4 @@ This repository accompanies the manuscript:
 
 ## 6. Citation
 
-If you use this code or the associated dataset, please cite the accompanying manuscript and the corresponding Zenodo records.
-
-**Software DOI:** [Add Zenodo software DOI]
-
 **Dataset DOI:** https://doi.org/10.5281/zenodo.23493288
